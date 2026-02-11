@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: clrvault-db
+    restart: unless-stopped
+    ports:
+      - '5442:5432'
+    environment:
+      POSTGRES_DB: clrvault
+      POSTGRES_USER: clrvault
+      POSTGRES_PASSWORD: clrvault_dev
+    volumes:
+      - clrvault_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U clrvault']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: clrvault-minio
+    restart: unless-stopped
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - clrvault_minio:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: clrvault-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb local/clrvault --ignore-existing;
+      mc anonymous set download local/clrvault;
+      exit 0;
+      "
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: clrvault-api
+    restart: unless-stopped
+    ports:
+      - '4030:4030'
+    environment:
+      NODE_ENV: production
+      PORT: 4030
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://clrvault:clrvault_dev@postgres:5432/clrvault?schema=public
+      JWT_SECRET: ${JWT_SECRET:-clrvault-dev-jwt-secret-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-clrvault-dev-refresh-secret-change-prod}
+      R2_ENDPOINT: http://minio:9000
+      R2_BUCKET: clrvault
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/clrvault
+      R2_REGION: auto
+      THUMBNAIL_WORKER_ENABLED: 'true'
+      METADATA_WORKER_ENABLED: 'true'
+      USAGE_AGGREGATION_ENABLED: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:4030
+    container_name: clrvault-web
+    restart: unless-stopped
+    ports:
+      - '3030:80'
+    depends_on:
+      - api
+
+volumes:
+  clrvault_pgdata:
+  clrvault_minio:
