@@ -14,6 +14,10 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
+  // Supabase JWT
+  SUPABASE_JWT_SECRET: z.string().default(''),
+  CLRHUB_URL: z.string().default('https://hub.clrtech.xyz'),
+
   // R2/S3 Storage
   R2_ENDPOINT: z.string(),
   R2_BUCKET: z.string().default('clrvault'),
