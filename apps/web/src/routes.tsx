@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { LoginPage } from '@/pages/Login';
+import LandingPage from '@/components/LandingPage';
 import { AssetsPage } from '@/pages/Assets';
 import { UploadPage } from '@/pages/Upload';
 import { CollectionsPage } from '@/pages/Collections';
@@ -38,6 +39,12 @@ export function AppRouter() {
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
+  }
+
+  const [showLanding, setShowLanding] = useState(true);
+
+  if (!isAuthenticated && showLanding) {
+    return <LandingPage onSignIn={() => setShowLanding(false)} />;
   }
 
   if (!isAuthenticated) {
