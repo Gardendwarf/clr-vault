@@ -127,12 +127,69 @@ async function buildApp() {
     });
   });
 
-  // 404 handler
-  app.setNotFoundHandler((_request, reply) => {
-    reply.status(404).send({
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Route not found' },
-    });
+  // Static file serving for SPA frontend
+  const SPA_ROOT = new URL('../../../../apps/web/dist', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+
+  // Serve /assets/* from the built frontend
+  app.get('/assets/{*path}', async (request, reply) => {
+    const { join } = await import('path');
+    const { readFile } = await import('fs/promises');
+    const assetPath = (request.params as { '*': string })['*'];
+    const filePath = join(SPA_ROOT, 'assets', assetPath);
+
+    try {
+      const content = await readFile(filePath);
+      // Determine content type from extension
+      const ext = filePath.split('.').pop()?.toLowerCase() || '';
+      const mimeTypes: Record<string, string> = {
+        js: 'application/javascript',
+        css: 'text/css',
+        svg: 'image/svg+xml',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        gif: 'image/gif',
+        woff: 'font/woff',
+        woff2: 'font/woff2',
+        ttf: 'font/ttf',
+        eot: 'application/vnd.ms-fontobject',
+        json: 'application/json',
+        wasm: 'application/wasm',
+      };
+      reply.header('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+      return reply.send(content);
+    } catch {
+      reply.status(404).send({ success: false, error: { code: 'NOT_FOUND', message: 'Asset not found' } });
+    }
+  });
+
+  // 404 handler — serves SPA index.html for non-API routes
+  app.setNotFoundHandler(async (request, reply) => {
+    // If the request is for an API route, return JSON 404
+    if (request.url.startsWith('/api/')) {
+      reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Route not found' },
+      });
+      return;
+    }
+
+    // For all other routes, serve the SPA index.html
+    try {
+      const { join } = await import('path');
+      const { readFile } = await import('fs/promises');
+      const indexPath = join(SPA_ROOT, 'index.html');
+      const html = await readFile(indexPath, 'utf-8');
+      reply.header('Content-Type', 'text/html; charset=utf-8');
+      reply.header('Cache-Control', 'no-cache');
+      return reply.send(html);
+    } catch {
+      reply.status(404).send({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Route not found' },
+      });
+    }
   });
 
   return app;
